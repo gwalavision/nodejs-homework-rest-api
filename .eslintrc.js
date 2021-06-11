@@ -15,5 +15,11 @@ module.exports = {
   rules: {
     "comma-dangle": "off",
     "space-before-function-paren": "off",
+    "prettier/prettier": [
+      "error",
+      {
+        endOfLine: "auto",
+      },
+    ],
   },
 };
