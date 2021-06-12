@@ -40,7 +40,7 @@ const schemaUpdateContact = Joi.object({
     })
     .optional(),
   favorite: Joi.boolean().optional(),
-});
+}).min(1);
 
 const schemaUpdateStatus = Joi.object({
   favorite: Joi.boolean().required(),
