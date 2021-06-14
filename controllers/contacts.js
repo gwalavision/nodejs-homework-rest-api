@@ -2,7 +2,6 @@ const contactServices = require("../model/contacts");
 const { HTTPCode } = require("../helpers/constants");
 
 const ctrlGetAll = async (req, res, next) => {
-  console.log(req);
   try {
     const userId = await req.user.id;
     const contacts = await contactServices.listContacts(userId);
