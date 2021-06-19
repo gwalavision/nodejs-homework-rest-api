@@ -6,10 +6,12 @@ const { promisify } = require("util");
 const { HTTPCode } = require("../helpers/constants");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
-// const UploadAvatar = require("../services/upload-avatars-local");
+
 const Upload = require("../services/upload-avatars-cloud");
+const EmaiService = require("../services/email");
+const CreateNodemailSender = require("../services/sender-email");
+
 const { JWT_SECRET_KEY } = process.env;
-// const { AVATARS_OF_USERS } = process.env;
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -28,7 +30,16 @@ const ctrlReg = async (req, res, next) => {
       });
     }
     const newUser = await Users.create(req.body);
-    const { id, email, subscription, avatar } = newUser;
+    const { id, email, subscription, avatar, verifyToken } = newUser;
+    try {
+      const emailService = new EmaiService(
+        process.env.NODE_ENV,
+        new CreateNodemailSender()
+      );
+      await emailService.verifiedPasswordEmailSender(verifyToken, email);
+    } catch (e) {
+      console.log(e.message);
+    }
     return res.status(HTTPCode.CREATED).json({
       status: "success",
       code: HTTPCode.CREATED,
@@ -54,6 +65,15 @@ const ctrlLogin = async (req, res, next) => {
         message: "Email or password is wrong",
       });
     }
+
+    if (!user.verify) {
+      return res.status(HTTPCode.UNAUTHORIZED).json({
+        status: "error",
+        code: HTTPCode.UNAUTHORIZED,
+        message: "You haven't confirmed your email",
+      });
+    }
+
     const payload = { id: user.id };
     const token = jwt.sign(payload, JWT_SECRET_KEY);
     await Users.updateToken(user.id, token);
@@ -107,10 +127,73 @@ const ctrlCurrentUser = async (req, res, next) => {
   }
 };
 
+const ctrlVerify = async (req, res, next) => {
+  try {
+    const user = await Users.getByVerifiedToken(req.params.token);
+    if (user) {
+      await Users.updateVerifyToken(user.id, true, null);
+      return res.status(HTTPCode.OK).json({
+        status: "success",
+        code: HTTPCode.OK,
+        message: "Verification successful",
+      });
+    } else {
+      return res.status(HTTPCode.NOT_FOUND).json({
+        status: "error",
+        code: HTTPCode.NOT_FOUND,
+        message: "User not found",
+      });
+    }
+  } catch (e) {
+    next(e);
+  }
+};
+
+const ctrlRepeatSendingVerifyEmail = async (req, res, next) => {
+  try {
+    const user = await Users.findByEmail(req.body.email);
+    if (user) {
+      const { email, verifyToken, verify } = user;
+      if (!verify) {
+        try {
+          const emailService = new EmaiService(
+            process.env.NODE_ENV,
+            new CreateNodemailSender()
+          );
+          await emailService.verifiedPasswordEmailSender(verifyToken, email);
+          return res.status(HTTPCode.OK).json({
+            status: "success",
+            code: HTTPCode.OK,
+            message: "Verification email sent",
+          });
+        } catch (e) {
+          return next(e);
+        }
+      } else if (verify) {
+        return res.status(HTTPCode.BAD_REQUEST).json({
+          status: "error",
+          code: HTTPCode.BAD_REQUEST,
+          message: "Verification has already been passed",
+        });
+      }
+    }
+
+    return res.status(HTTPCode.NOT_FOUND).json({
+      status: "error",
+      code: HTTPCode.NOT_FOUND,
+      message: "User not found",
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
 module.exports = {
   ctrlReg,
   ctrlLogin,
   ctrlLogout,
   ctrlCurrentUser,
   ctrlAvatars,
+  ctrlVerify,
+  ctrlRepeatSendingVerifyEmail,
 };
